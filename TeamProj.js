@@ -11,18 +11,10 @@ $(document).ready(start);
 
 //========= Global Variables =============================================
 const routes = [];
+const selectRoutes = [];
 const stops = [];
-
-
-$(function(){
-    $('#myModal').on('show.bs.modal', function(){
-        var myModal = $(this);
-        clearTimeout(myModal.data('hideInterval'));
-        myModal.data('hideInterval', setTimeout(function(){
-            myModal.modal('hide');
-        }, 3000));
-    });
-});
+const selectStops = [];
+const stopsData = [];
 
 
 function start(){
@@ -33,9 +25,34 @@ function start(){
     //select multiple stops/routes
     $(document.body).on("mousedown", "option", function(event){
         event.preventDefault();
-        $(this).prop('selected', !$(this).prop('selected'));
-        stops.push(event.currentTarget.value);
-        return false;
+        var curSelect = event.currentTarget.value; //gets number
+        var isNotNum = isNaN(event.currentTarget.value); //checks to see if it is a route or stop
+        $(this).prop('selected', !$(this).prop('selected')); //shades selected
+
+        var curIndex = selectRoutes.indexOf(curSelect); //gets index of selected Route
+        var curStopIndex = selectStops.indexOf(curSelect); //gets index of selected Stop
+
+        //if index is < 0 then we push it to the array
+        //else we splice it out of the array
+        if(curIndex < 0 && !isNotNum){
+            selectRoutes.push(event.currentTarget.value);
+            console.log("Adding: "+ curSelect);
+            console.log("Route Array Contains: " + selectRoutes);
+        }else if(curStopIndex < 0 && isNotNum){
+            selectStops.push(event.currentTarget.value);
+            console.log("Adding: "+ curSelect);
+            console.log("Stops Array Contains: " + selectStops);
+        }else if(curIndex >= 0 && !isNotNum){
+            selectRoutes.splice(curIndex, 1);
+            console.log("Deleting: " + curSelect);
+            console.log("Array Contains: "+ selectRoutes);
+        }else{
+            selectStops.splice(curStopIndex, 1);
+            console.log(selectStops[curStopIndex]);
+            console.log("Deleting: "+ curSelect);
+            console.log("Stops Array Contains: " + selectStops);
+        }
+        return false;        
     });
 
     //keypress on enter for location setting
@@ -47,9 +64,16 @@ function start(){
 
     //clicking continue on routes for manual
     $("#stopContinue").click(function(event){
+        //console debugs
+        //console.log($("#stopSelect").find('option'));
+        //console.log($("#stopSelect").find('selected'));
+        console.log(selectRoutes);
+        console.log(stops);
+
+        //actual logic
         $("#stopSelect").find('option').remove();
-        for(let i = 0; i < routes.length; i++){
-            getStops(routes[i]);
+        for(let i = 0; i < selectRoutes.length; i++){
+            getStops(selectRoutes[i]);
         }
         $("#stopContinue").remove();
     });
@@ -75,8 +99,10 @@ function start(){
         }
     });
 
-    //Alert Handler
-    $(".alert").fadeOut();
+    //Clicking Save Changes Button
+    $("#btnSaveChanges").click(function(){
+        getArrivals();
+    });
 }
 
 //========= Set Up Functions =============================================
@@ -85,6 +111,27 @@ function start(){
 function getRoutes(){
     let link = "http://52.88.188.196:8080/api/api/where/route-ids-for-agency/STA.json?key=TEST";
     $.get(link, gotRoutes, "jsonp");
+}
+
+// REFACTOR THIS BITCH
+function getArrivals(){
+    console.log(selectStops);
+    for(let i = 0; i<selectStops.length; i++){
+        let link = "http://52.88.188.196:8080/api/api/where/arrivals-and-departures-for-stop/" + selectStops[i] +".json?key=TEST"
+        $.get(link, gotArrivals, "jsonp");
+    }
+}
+
+function gotArrivals(data){
+    console.log(data);
+    var currentTime = data.currentTime;
+    console.log("Current Time: " + currentTime);
+    console.log(data.data.entry.arrivalsAndDepartures);
+    var predArrivalTime = data.data.entry.arrivalsAndDepartures[0].predictedArrivalTime;
+    var dateTime = new Date(predArrivalTime);
+    var routeLongName = data.data.entry.arrivalsAndDepartures[0].routeLongName;
+    var stopId = data.data.entry.arrivalsAndDepartures[0].stopId;
+    console.log("Route: " + routeLongName + ", StopId: " + stopId + ", Arrival Time: " + dateTime); 
 }
 
 function gotRoutes(data){
@@ -98,6 +145,10 @@ function gotRoutes(data){
     }
 }
 
+function catchArrivals(data){
+    stopsData.push(data);   
+}
+
 function displayRoutes(route){
     let opt = document.createElement("option");
     opt.value = route;
@@ -105,6 +156,10 @@ function displayRoutes(route){
     opt.setAttribute("id", route);
     
     $("#stopSelect").append(opt);
+}
+
+function displayArrival(){
+
 }
 
 
@@ -119,13 +174,13 @@ function getRoutesLoc(data){
     let lat = data.results[0].geometry.location.lat;
     let long = data.results[0].geometry.location.lng;
 
-    let link = "http://52.88.188.196:8080/api/api/where/stops-for-location.json?key=TEST&lat=" + lat + "&lon=" + long + "&radius=100";
+    let link = "http://52.88.188.196:8080/api/api/where/stops-for-location.json?key=TEST&lat=" + lat + "&lon=" + long + "&radius=80";
     $.get(link, gotRoutesLoc, "jsonp");
 }
 
 function gotRoutesLoc(data){
     for(let i = 0; i < data.data.list.length; i++){
-        console.log(data.data.list[i]);
+        //console.log(data.data.list[i]);
         displayStops(data.data.list[i].id);
     }
 }
@@ -134,16 +189,21 @@ function gotRoutesLoc(data){
 
 // ------- Stops ---------
 function getStops(id){
+    console.log("ID: " + id);
     let link = "http://52.88.188.196:8080/api/api/where/stops-for-route/STA_" + id + ".json?key=TEST";
     $.get(link, gotStops, "jsonp");
 }
 
+//  currently displaying ALL stops(?)
 function gotStops(data){
-    for(let i = 0; i < data.data.references.stops.length; i++){
-        stops.push(data.data.references.stops[i].name);
-        displayStops(data.data.references.stops[i].name);
-        console.log(data.data.references.stops.length);
+    console.log(data.data.entry.stopIds.length); //displays every route I think
+    
+    for(let i = 0; i < data.data.entry.stopIds.length; i++){
+        stops.push(data.data.entry.stopIds[i]);
+        displayStops(data.data.entry.stopIds[i]);
+        //console.log(data.data.entry.stopIds[i]);
     }
+    
 }
 
 function displayStops(stop){
@@ -196,24 +256,9 @@ function colorChanged(){
 }
 
 
-// --------- Save Stops ----------------
-function saveChanges(){
-    console.log($("#stopSelect"));
-    for(let i = 0; i < $("#stopSelect").val(); i++){
-
-    }
-}
 
 //========= Helper Functions =============================================
 
 function sortNumber(a, b){
     return a - b;
-}
-
-function makeAlert(text){
-    alertDiv = document.createElement("div");
-    alertDiv.setAttribute("class", "alert alert-primary");
-    alertDiv.setAttribute("role", "alert");
-
-    
 }
